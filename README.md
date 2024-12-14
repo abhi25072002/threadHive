@@ -1,4 +1,4 @@
-<h1 align="center">{{threadHive}}</h1> 
+<h1 align="center">threadHive</h1> 
 <br/>
 <div align="center">
   <h1><strong>Multithreading library</strong></h1>
