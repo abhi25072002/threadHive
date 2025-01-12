@@ -12,8 +12,8 @@
 - [Contributors](#cont)
 
 # Description <a name="description"></a>
-` threadlib ` is an implementation of user-level multithreading library which provides functions like thread creation, joining, blocking, destroying of threads, signal handling in threads.<br>
-It supports user-level threads in following 3 mapping models.
+` threadHive` is an implementation of a user-level multithreading library that provides functions like thread creation, joining, blocking, destroying of threads, and signal handling in threads.<br>
+It supports user-level threads in the following 3 mapping models.
 <br>
 These 3 models are implemented depending on how the user threads are mapped to the kernel threads.
 <ol>
