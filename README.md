@@ -1,86 +1,146 @@
-<h1 align="center">threadHive (Multithreading library) </h1> 
+<div align="center">
 
-## Table of Contents
-- [Description](#description)
-- [Multithreading Models](#multithreading_models)
-- [Thread APIS Provided by library](#thread_apis)
-- [Usage](#usage)
-- [Contributors](#cont)
+<img src="docs/logo.svg" alt="threadHive — a user-level threading library in C" width="820"/>
 
-# Description <a name="description"></a>
-` threadHive` is an implementation of a user-level multithreading library that provides functions like thread creation, joining, blocking, destroying of threads, and signal handling in threads.<br>
-It supports user-level threads in the following 3 mapping models.
-<br>
-These 3 models are implemented depending on how the user threads are mapped to the kernel threads.
-<ol>
-    <li><strong>One-One Model</strong></li>
-    <li><strong>Many-One Model</strong></li>
-    <li><strong>Many-Many Model</strong></li>
-</ol>
-The thread in each of the above models is spawned by defining a function and its arguments, which will be processed in the thread.
-<br/>
+[![Language: C](https://img.shields.io/badge/C-GNU11-A8B9CC?logo=c&logoColor=white)](https://gcc.gnu.org/)
+[![Platform](https://img.shields.io/badge/Linux-x86--64-FCC624?logo=linux&logoColor=black)](https://man7.org/linux/man-pages/man2/clone.2.html)
+[![Models](https://img.shields.io/badge/models-1%3A1%20·%20M%3A1%20·%20M%3AN-f0883e)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-# Multithreading Models  <a name="multithreading_models"></a>
-Multithreading Models provide a way for establishing relationships between user-level and kernel-level threads.
+**A pthreads-style threading library built from scratch on raw `clone()`, signals, and `setjmp` — no pthreads anywhere in the implementation.**
 
-1.One One Model:(1 user-thread: 1 kernel thread)
-<br/>
-```
-One One model maps every user thread to one kernel thread.
-For each user-thread creation under this model, the corresponding kernel thread is created using a clone system call.
-A newly created thread is added to the linked list of threads.
-Each node of the linked list encapsulates thread schema like thread_id, the function pointer, that it will execute.
-```
+</div>
 
-2.Many One Model:(n user-threads: 1 kernel thread)
-<br/>
-```
-Many One model maps many user-level threads onto one kernel thread. 
-1. For each user thread created, its context is also saved using a jump buffer in the node of a linked list of threads.
-2. The first two nodes of the linked list are reserved for the main thread and scheduler thread, respectively.
-3. Signal SIGALARM is used as an indicator for Timer Interrupt for context switching between threads.
-4. Scheduler function is designed for scheduling many user threads and handling context switch among threads.
-5. During each context switch,control will be passed to the scheduler function.
-6. FCFS(First come, First serve) strategy is incorporated for scheduling which selects the proper user thread for execution on a single kernel thread.
+---
+
+## What is this?
+
+threadHive implements user-level multithreading in C three different ways — the three classic mappings of user threads onto kernel threads that OS textbooks describe, each as a drop-in library with the same API:
+
+| Model | Mapping | How it schedules |
+|-------|---------|------------------|
+| [`one_one/`](one_one) | 1 user thread : 1 kernel thread | Kernel schedules; each thread is a `clone()`d task on its own `mmap`'d, guard-paged stack |
+| [`many_one/`](many_one) | N user threads : 1 kernel thread | Library schedules; `SIGALRM` timer interrupts drive preemptive FCFS context switches via `sigsetjmp`/`siglongjmp` |
+| [`many_many/`](many_many) | M user threads : N kernel threads | Each `clone()`d kernel thread runs its own scheduler, multiplexing a shared pool of user threads |
+
+The payoff, from the stress test — multiplying two 1000×1000 matrices with the one-one library:
+
+```text
+Matrix multiplication(Dimension): 1000 * 1000
+Time Required with MultiThreading:    0.070 seconds
+Time Required withOut MultiThreading: 2.484 seconds     ~35x speedup
 ```
 
-3.Many Many Model:(m user-threads: n kernel threads)
-<br/>
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph API [One API, three engines]
+        A[thread_create / join / exit / kill<br/>thread_lock / thread_unlock]
+    end
+
+    subgraph OO [one_one]
+        U1[user thread] --- K1[kernel thread]
+        U2[user thread] --- K2[kernel thread]
+    end
+
+    subgraph MO [many_one]
+        U3[user thread]
+        U4[user thread]
+        U5[user thread]
+        S1[FCFS scheduler<br/>SIGALRM preemption] --- K3[kernel thread]
+        U3 & U4 & U5 --> S1
+    end
+
+    subgraph MM [many_many]
+        U6[user thread]
+        U7[user thread]
+        U8[user thread]
+        S2[scheduler] --- K4[kernel thread]
+        S3[scheduler] --- K5[kernel thread]
+        U6 & U7 & U8 --> S2 & S3
+    end
+
+    A --> OO & MO & MM
 ```
-The many-to-many model multiplexes many user-level threads to a smaller or equal number of kernel threads.
-1. The number of kernel threads required is taken as input from the user.
-2. Each kernel thread created using a clone system call has its own scheduler for managing user threads onto that kernel thread.
-3. Two linked lists are created for managing kernel threads and user threads separately.
+
+## API
+
+Every model ships the same interface (`mythread.h`):
+
+| Function | Description |
+|----------|-------------|
+| `int thread_create(mythread_t *t, void *attr, void *func_ptr, void *args)` | Spawn a thread running `func_ptr(args)` |
+| `int thread_join(mythread_t *t, void **retval)` | Wait for a thread and collect its return value |
+| `void thread_exit(void *retval)` | Terminate the calling thread |
+| `int thread_kill(mythread_t *t, int sig)` | Deliver a signal to a specific thread |
+| `void thread_lock(spinlock *sl)` / `void thread_unlock(spinlock *sl)` | Spinlock acquire/release (atomic `xchg`-based) |
+| `void mythread_setkthreads(int n)` | *(many_many only)* choose the kernel-thread pool size |
+
+```c
+#include "mythread.h"
+
+void worker(void *arg) { /* ... */ }
+
+int main(void) {
+    mythread_t t;
+    thread_create(&t, NULL, worker, NULL);
+    thread_join(&t, NULL);
+}
 ```
 
-# Thread APIs provided by Library  <a name="thread_apis"></a>
-1. **`thread_create(mythread_t *t, void *attr, void *func_ptr, void *args);`**
+Link your program against the model you want:
 
-2. **`thread_join(mythread_t *t, void **retval);`**
-
-3. **`thread_exit(void *retval);`**
-
-4. **`thread_kill(mythread_t *T, int sig);`**
-
-5. **`thread_lock(struct spinlock *sl);`**
-
-6. **`thread_unlock(struct spinlock *sl);`**
-
-# Usage <a name="usage"></a>
-
-1. Clone this repository using the command:
+```bash
+cc yourprogram.c one_one/mythread.c one_one/lock.c   # or many_one/, many_many/
 ```
-git clone 
-```
-2. Run testing code using the following commands:
-```
-cd user-threads
+
+## Running the tests
+
+Linux (x86-64) with gcc:
+
+```bash
 bash runall.sh
 ```
 
+Not on Linux? One Docker command runs the whole suite:
 
-# Contributors   <a name="cont"></a>
-<ul>
-<li><a href="abhishekdharmadhikari25@gmail.com">Abhishek Jagannath Dharmadhikari</a></li>
-<li><a href="sanketuk@gmail.com">Sanket Ukhaji Khaire</a></li>
-</ul>
+```bash
+docker run --rm -t -v "$PWD":/src -w /src gcc:12 bash runall.sh
+```
+
+The suite exercises create/join/exit/kill, spinlock critical sections, race-condition checks, and matrix-multiplication stress tests across the models. The one-one section of a real run:
+
+<div align="center">
+<img src="docs/test-run.png" alt="threadHive one-one test output: create, join, exit, lock and kill tests passing" width="760"/>
+</div>
+
+## Internals worth reading
+
+- **[`one_one/mythread.c`](one_one/mythread.c)** — threads are `clone()`d with `CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD`, each on a fresh `mmap`'d stack with a **guard page** in front to catch overflows
+- **[`many_one/mythread.c`](many_one/mythread.c)** — a `SIGALRM` interval timer preempts the running user thread; the scheduler saves context in a jump buffer and `siglongjmp`s into the next runnable thread (FCFS)
+- **[`many_many/mythread.c`](many_many/mythread.c)** — N kernel threads are `clone()`d, each running its own scheduler over shared linked lists of user threads and kernel threads
+- **[`lock.c`](one_one/lock.c)** — spinlocks via inline-assembly atomic exchange, with owner tracking
+
+> Known gaps: the many_many matrix/sync stress tests still segfault under load — the M:N scheduler is the hardest of the three and remains a work in progress (its core API tests pass). The kill/sync tests are also timing-sensitive and can be flaky, especially under QEMU emulation.
+
+## Project structure
+
+```
+threadHive/
+├── one_one/            # 1:1 model — library + testing/
+├── many_one/           # M:1 model — library + testing/
+├── many_many/          # M:N model — library + testing/
+│   └── (each has mythread.c/.h, lock.c/.h)
+├── runall.sh           # Compile + run the test suites
+└── docs/               # Logo, test output, coroutines reference
+```
+
+## Contributors
+
+- [Abhishek Dharmadhikari](https://github.com/abhi25072002)
+- [Sanket Khaire](https://github.com/Sanketkhaire)
+
+## License
+
+[MIT](LICENSE)
