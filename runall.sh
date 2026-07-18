@@ -29,6 +29,10 @@ done
 
 
 
+echo "Starting Testing For many-many:"
+cc many_many/testing/libraryFunctionsTest.c many_many/mythread.c many_many/lock.c -o try1
+./try1
+
 rm try1
 rm answer1
 rm sync1

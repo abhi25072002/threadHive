@@ -17,7 +17,7 @@
 
 th_linked_list thread_chain;
 kth_linked_list kthread_chain={NULL,NULL,3};
-spinlock sl;
+static spinlock sl;
 
 
 
@@ -407,3 +407,11 @@ int thread_kill(mythread_t *t, int sig){
 // }
 */
 
+
+void thread_lock(struct spinlock *sl){
+    acquire(sl);
+}
+
+void thread_unlock(struct spinlock *sl){
+    release(sl);
+}

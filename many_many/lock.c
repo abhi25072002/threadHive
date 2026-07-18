@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <limits.h>
-#include "lock.h"
+#include "mythread.h"
 
 extern th_linked_list thread_chain;
 // extern enum threadState{RUNNABLE,TERMINATED,RUNNING,EMBRYO};
@@ -99,7 +99,7 @@ release(struct spinlock *lk)
   else var = start->th->tid;
   
   if(!(lk->locked && lk->tid == var)){
-    perror("release gandly\n");
+    perror("release: lock not held by this thread\n");
   }
 
   lk->tid = -1;

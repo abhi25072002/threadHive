@@ -9,6 +9,7 @@
 enum threadState{RUNNABLE,TERMINATED,RUNNING,EMBRYO};
 
 typedef unsigned long mythread_t;
+#include "lock.h"
 
 typedef struct funcDesc{
     void (*fPtr)(void *);
@@ -64,5 +65,7 @@ int thread_create(mythread_t *t,void *attr, void *func_ptr, void *args);
 int thread_join(mythread_t *t, void **retval);
 void thread_exit(void *retval);
 int thread_kill(mythread_t *T, int sig);
+void thread_lock(struct spinlock *sl);
+void thread_unlock(struct spinlock *sl);
 
 #endif
