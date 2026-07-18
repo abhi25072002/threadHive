@@ -1,0 +1,19 @@
+# build artifacts
+*.o
+*.out
+a.out
+try
+try1
+answer
+answer1
+sync
+sync1
+one_one/mythread
+many_one/mythread
+many_many/mythread
+
+# editor litter
+*.swp
+.vscode/
+.idea/
+.DS_Store
